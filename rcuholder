@@ -1,0 +1,371 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local guiClosed = false
+
+_G.OrbsWanted = false
+_G.GiftsWanted = false
+_G.ESPEnabled = false
+
+local OrbsActive = false
+local GiftsActive = false
+local currentStatus = "Status: Waiting"
+
+local function getHRP()
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char:WaitForChild("HumanoidRootPart")
+end
+
+local Debris = workspace:WaitForChild("Debris", 10)
+
+local function findOrbs()
+    local folder = Debris:FindFirstChild("Orbs")
+    if not folder then return {} end
+    local t = {}
+    for _, v in ipairs(folder:GetChildren()) do
+        local p = v:IsA("Model") and v.PrimaryPart or v
+        if p then table.insert(t, p) end
+    end
+    return t
+end
+
+local function findGifts()
+    local t = {}
+    for _, v in ipairs(Debris:GetChildren()) do
+        if v:IsA("Model") and v.Name:match("^Gift[1-6]$") and v.PrimaryPart then
+            table.insert(t, v.PrimaryPart)
+        end
+    end
+    return t
+end
+
+local function findModelsByName(name)
+    local t = {}
+    for _, v in ipairs(Debris:GetChildren()) do
+        if v:IsA("Model") and v.Name == name and v.PrimaryPart then
+            table.insert(t, v.PrimaryPart)
+        end
+    end
+    return t
+end
+
+local function findClosestByName(name)
+    local hrp = getHRP()
+    local closest, dist = nil, math.huge
+    for _, v in ipairs(Debris:GetChildren()) do
+        if v:IsA("Model") and v.Name == name and v.PrimaryPart then
+            local d = (hrp.Position - v.PrimaryPart.Position).Magnitude
+            if d < dist then
+                dist = d
+                closest = v.PrimaryPart
+            end
+        end
+    end
+    return closest
+end
+
+task.spawn(function()
+    while true do
+        local hrp = getHRP()
+        local orbs = _G.OrbsWanted and findOrbs() or {}
+        local gifts = _G.GiftsWanted and findGifts() or {}
+
+        OrbsActive = false
+        GiftsActive = false
+
+        if _G.OrbsWanted and _G.GiftsWanted then
+            currentStatus =
+                (#orbs == 0 and #gifts == 0)
+                and "Status: Waiting for Orbs + Gifts to spawn"
+                or "Status: Teleporting to Orbs + Gifts"
+        elseif _G.OrbsWanted then
+            currentStatus =
+                (#orbs == 0)
+                and "Status: Waiting for Orbs to spawn"
+                or "Status: Teleporting to Orbs"
+        elseif _G.GiftsWanted then
+            currentStatus =
+                (#gifts == 0)
+                and "Status: Waiting for Gifts to spawn"
+                or "Status: Teleporting to Gifts"
+        else
+            currentStatus = "Status: Waiting"
+        end
+
+        for _, p in ipairs(orbs) do
+            if not _G.OrbsWanted then break end
+            OrbsActive = true
+            hrp.CFrame = p.CFrame + Vector3.new(0, 3, 0)
+            RunService.Heartbeat:Wait()
+        end
+
+        for _, p in ipairs(gifts) do
+            if not _G.GiftsWanted then break end
+            GiftsActive = true
+            hrp.CFrame = p.CFrame + Vector3.new(0, 3, 0)
+            RunService.Heartbeat:Wait()
+        end
+
+        task.wait(0.15)
+    end
+end)
+
+local espObjects = {}
+
+local function clearESP()
+    for _, v in pairs(espObjects) do
+        if v then v:Destroy() end
+    end
+    table.clear(espObjects)
+end
+
+local function shouldESP(modelName)
+    return modelName == "FallingStar" or 
+           modelName == "SantaDrop" or 
+           modelName:match("^Gift[1-6]$") or
+           modelName == "Orb"
+end
+
+task.spawn(function()
+    while true do
+        clearESP()
+        if _G.ESPEnabled then
+            local hrp = getHRP()
+            
+            local orbsFolder = Debris:FindFirstChild("Orbs")
+            if orbsFolder then
+                for _, v in ipairs(orbsFolder:GetChildren()) do
+                    local part = v:IsA("Model") and v.PrimaryPart or v
+                    if part and part:IsA("BasePart") then
+                        local box = Instance.new("BoxHandleAdornment")
+                        box.Adornee = part
+                        box.Size = part.Size
+                        box.Color3 = Color3.fromRGB(255, 255, 0)
+                        box.AlwaysOnTop = true
+                        box.ZIndex = 5
+                        box.Transparency = 0.5
+                        box.Parent = part
+                        table.insert(espObjects, box)
+                        
+                        local billboard = Instance.new("BillboardGui")
+                        billboard.Adornee = part
+                        billboard.Size = UDim2.new(0, 200, 0, 50)
+                        billboard.StudsOffset = Vector3.new(0, 3, 0)
+                        billboard.AlwaysOnTop = true
+                        billboard.Parent = part
+                        
+                        local textLabel = Instance.new("TextLabel")
+                        textLabel.Size = UDim2.new(1, 0, 1, 0)
+                        textLabel.BackgroundTransparency = 1
+                        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        textLabel.Font = Enum.Font.SourceSansBold
+                        textLabel.TextSize = 18
+                        textLabel.TextStrokeTransparency = 0
+                        textLabel.Parent = billboard
+                        
+                        table.insert(espObjects, billboard)
+                        
+                        task.spawn(function()
+                            while billboard.Parent and _G.ESPEnabled do
+                                local distance = (hrp.Position - part.Position).Magnitude
+                                textLabel.Text = string.format("Orb\n%.1f studs", distance)
+                                task.wait(0.1)
+                            end
+                        end)
+                    end
+                end
+            end
+            
+            for _, v in ipairs(Debris:GetChildren()) do
+                if v:IsA("Model") and shouldESP(v.Name) and v.PrimaryPart then
+                    local part = v.PrimaryPart
+                    
+                    local box = Instance.new("BoxHandleAdornment")
+                    box.Adornee = part
+                    box.Size = part.Size
+                    box.Color3 = Color3.fromRGB(0, 255, 0)
+                    box.AlwaysOnTop = true
+                    box.ZIndex = 5
+                    box.Transparency = 0.5
+                    box.Parent = part
+                    table.insert(espObjects, box)
+                  
+                    local billboard = Instance.new("BillboardGui")
+                    billboard.Adornee = part
+                    billboard.Size = UDim2.new(0, 200, 0, 50)
+                    billboard.StudsOffset = Vector3.new(0, 3, 0)
+                    billboard.AlwaysOnTop = true
+                    billboard.Parent = part
+                    
+                    local textLabel = Instance.new("TextLabel")
+                    textLabel.Size = UDim2.new(1, 0, 1, 0)
+                    textLabel.BackgroundTransparency = 1
+                    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    textLabel.Font = Enum.Font.SourceSansBold
+                    textLabel.TextSize = 18
+                    textLabel.TextStrokeTransparency = 0
+                    textLabel.Parent = billboard
+                    
+                    table.insert(espObjects, billboard)
+                    
+                    -- Update distance continuously
+                    task.spawn(function()
+                        while billboard.Parent and _G.ESPEnabled do
+                            local distance = (hrp.Position - part.Position).Magnitude
+                            textLabel.Text = string.format("%s\n%.1f studs", v.Name, distance)
+                            task.wait(0.1)
+                        end
+                    end)
+                end
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+local gui = Instance.new("ScreenGui", player.PlayerGui)
+gui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 320, 0, 400)
+frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.new(0, 0, 0)
+frame.Active = true
+frame.Draggable = true
+
+local frameCorner = Instance.new("UICorner", frame)
+frameCorner.CornerRadius = UDim.new(0, 12)
+
+local mobileBtn = Instance.new("TextButton", gui)
+mobileBtn.Size = UDim2.new(0, 80, 0, 80)
+mobileBtn.Position = UDim2.new(0, 10, 0.5, -40)
+mobileBtn.BackgroundColor3 = Color3.new(0, 0, 0)
+mobileBtn.Text = "Crock Hub"
+mobileBtn.TextColor3 = Color3.fromRGB(255, 0, 0)
+mobileBtn.Font = Enum.Font.SourceSansBold
+mobileBtn.TextSize = 14
+mobileBtn.TextWrapped = true
+mobileBtn.Active = true
+mobileBtn.Draggable = true
+mobileBtn.Visible = false
+
+local mobileCorner = Instance.new("UICorner", mobileBtn)
+mobileCorner.CornerRadius = UDim.new(0, 8)
+
+local rainbowStrokes = {}
+local hue = 0
+
+RunService.RenderStepped:Connect(function(dt)
+    hue = (hue + dt * 0.3) % 1
+    local c = Color3.fromHSV(hue, 1, 1)
+    for _, s in ipairs(rainbowStrokes) do
+        s.Color = c
+    end
+end)
+
+local function addRainbowStroke(obj)
+    local s = Instance.new("UIStroke")
+    s.Thickness = 3
+    s.Parent = obj
+    table.insert(rainbowStrokes, s)
+end
+
+-- Add rainbow stroke to frame background
+addRainbowStroke(frame)
+
+-- Add rainbow stroke to mobile button
+addRainbowStroke(mobileBtn)
+
+local closeBtn = Instance.new("TextButton", frame)
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.TextSize = 18
+
+closeBtn.MouseButton1Click:Connect(function()
+    frame.Visible = false
+    mobileBtn.Visible = true
+end)
+
+mobileBtn.MouseButton1Click:Connect(function()
+    frame.Visible = true
+    mobileBtn.Visible = false
+end)
+
+local status = Instance.new("TextLabel", frame)
+status.Size = UDim2.new(0.9, 0, 0, 25)
+status.Position = UDim2.new(0.05, 0, 0, 10)
+status.BackgroundTransparency = 1
+status.TextColor3 = Color3.fromRGB(255, 0, 0)
+status.Font = Enum.Font.SourceSansBold
+status.TextSize = 14
+
+task.spawn(function()
+    while true do
+        status.Text = currentStatus
+        RunService.Heartbeat:Wait()
+    end
+end)
+
+local function makeBtn(parent, text, y, cb)
+    local b = Instance.new("TextButton", parent)
+    b.Size = UDim2.new(0.9, 0, 0, 30)
+    b.Position = UDim2.new(0.05, 0, 0, y)
+    b.Text = text
+    b.BackgroundColor3 = Color3.new(0, 0, 0)
+    b.TextColor3 = Color3.fromRGB(255, 0, 0)
+    b.Font = Enum.Font.SourceSansBold
+    b.TextSize = 14
+    
+    b.MouseButton1Click:Connect(cb)
+    return b
+end
+
+makeBtn(frame, "Toggle Orbs", 50, function()
+    _G.OrbsWanted = not _G.OrbsWanted
+end)
+
+makeBtn(frame, "Toggle Gifts", 90, function()
+    _G.GiftsWanted = not _G.GiftsWanted
+end)
+
+makeBtn(frame, "ESP + Distance", 130, function()
+    _G.ESPEnabled = not _G.ESPEnabled
+end)
+
+makeBtn(frame, "Christmas Rewards", 180, function()
+    getHRP().CFrame = CFrame.new(3625.46021, -248.423355, 2188.08276)
+end)
+
+makeBtn(frame, "Frozen Chest", 220, function()
+    getHRP().CFrame = CFrame.new(3980.646, -248.423355, 2193.35718)
+end)
+
+makeBtn(frame, "Falling Stars", 260, function()
+    for _, p in ipairs(findModelsByName("FallingStar")) do
+        getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0)
+        task.wait()
+    end
+end)
+
+makeBtn(frame, "Santa Drop", 300, function()
+    local p = findClosestByName("SantaDrop")
+    if p then getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0) end
+end)
+
+makeBtn(frame, "Lucky Egg", 340, function()
+    local p = findClosestByName("2026")
+    if p then getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0) end
+end)
+
+UserInputService.InputBegan:Connect(function(i, g)
+    if not g and i.KeyCode == Enum.KeyCode.B and not guiClosed then
+        frame.Visible = not frame.Visible
+        mobileBtn.Visible = not frame.Visible
+    end
+end)
