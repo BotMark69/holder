@@ -7,10 +7,12 @@ local guiClosed = false
 
 _G.OrbsWanted = false
 _G.GiftsWanted = false
+_G.FallingStarsWanted = false
 _G.ESPEnabled = false
 
 local OrbsActive = false
 local GiftsActive = false
+local FallingStarsActive = false
 local currentStatus = "Status: Waiting"
 
 local function getHRP()
@@ -35,6 +37,16 @@ local function findGifts()
     local t = {}
     for _, v in ipairs(Debris:GetChildren()) do
         if v:IsA("Model") and v.Name:match("^Gift[1-6]$") and v.PrimaryPart then
+            table.insert(t, v.PrimaryPart)
+        end
+    end
+    return t
+end
+
+local function findFallingStars()
+    local t = {}
+    for _, v in ipairs(Debris:GetChildren()) do
+        if v:IsA("Model") and v.Name == "FallingStar" and v.PrimaryPart then
             table.insert(t, v.PrimaryPart)
         end
     end
@@ -66,32 +78,54 @@ local function findClosestByName(name)
     return closest
 end
 
+local function findClosestMeteorite()
+    local hrp = getHRP()
+    local closest, dist = nil, math.huge
+    for _, v in ipairs(Debris:GetChildren()) do
+        if v:IsA("Model") and (v.Name == "Huge" or v.Name == "Normal") and v.PrimaryPart then
+            local d = (hrp.Position - v.PrimaryPart.Position).Magnitude
+            if d < dist then
+                dist = d
+                closest = v.PrimaryPart
+            end
+        end
+    end
+    return closest
+end
+
 task.spawn(function()
     while true do
         local hrp = getHRP()
         local orbs = _G.OrbsWanted and findOrbs() or {}
         local gifts = _G.GiftsWanted and findGifts() or {}
+        local stars = _G.FallingStarsWanted and findFallingStars() or {}
 
         OrbsActive = false
         GiftsActive = false
+        FallingStarsActive = false
 
-        if _G.OrbsWanted and _G.GiftsWanted then
-            currentStatus =
-                (#orbs == 0 and #gifts == 0)
-                and "Status: Waiting for Orbs + Gifts to spawn"
-                or "Status: Teleporting to Orbs + Gifts"
-        elseif _G.OrbsWanted then
-            currentStatus =
-                (#orbs == 0)
-                and "Status: Waiting for Orbs to spawn"
-                or "Status: Teleporting to Orbs"
-        elseif _G.GiftsWanted then
-            currentStatus =
-                (#gifts == 0)
-                and "Status: Waiting for Gifts to spawn"
-                or "Status: Teleporting to Gifts"
-        else
+        local activeFeatures = {}
+        local waitingFor = {}
+        
+        if _G.OrbsWanted then
+            table.insert(activeFeatures, "Orbs")
+            if #orbs == 0 then table.insert(waitingFor, "Orbs") end
+        end
+        if _G.GiftsWanted then
+            table.insert(activeFeatures, "Gifts")
+            if #gifts == 0 then table.insert(waitingFor, "Gifts") end
+        end
+        if _G.FallingStarsWanted then
+            table.insert(activeFeatures, "Falling Stars")
+            if #stars == 0 then table.insert(waitingFor, "Falling Stars") end
+        end
+        
+        if #activeFeatures == 0 then
             currentStatus = "Status: Waiting"
+        elseif #waitingFor > 0 then
+            currentStatus = "Status: Waiting for " .. table.concat(waitingFor, " + ") .. " to spawn"
+        else
+            currentStatus = "Status: Teleporting to " .. table.concat(activeFeatures, " + ")
         end
 
         for _, p in ipairs(orbs) do
@@ -104,6 +138,13 @@ task.spawn(function()
         for _, p in ipairs(gifts) do
             if not _G.GiftsWanted then break end
             GiftsActive = true
+            hrp.CFrame = p.CFrame + Vector3.new(0, 3, 0)
+            RunService.Heartbeat:Wait()
+        end
+
+        for _, p in ipairs(stars) do
+            if not _G.FallingStarsWanted then break end
+            FallingStarsActive = true
             hrp.CFrame = p.CFrame + Vector3.new(0, 3, 0)
             RunService.Heartbeat:Wait()
         end
@@ -191,7 +232,7 @@ task.spawn(function()
                     box.Transparency = 0.5
                     box.Parent = part
                     table.insert(espObjects, box)
-                  
+                    
                     local billboard = Instance.new("BillboardGui")
                     billboard.Adornee = part
                     billboard.Size = UDim2.new(0, 200, 0, 50)
@@ -210,7 +251,6 @@ task.spawn(function()
                     
                     table.insert(espObjects, billboard)
                     
-                    -- Update distance continuously
                     task.spawn(function()
                         while billboard.Parent and _G.ESPEnabled do
                             local distance = (hrp.Position - part.Position).Magnitude
@@ -228,8 +268,66 @@ end)
 local gui = Instance.new("ScreenGui", player.PlayerGui)
 gui.ResetOnSpawn = false
 
+local creditsFrame = Instance.new("Frame", gui)
+creditsFrame.Size = UDim2.new(0, 400, 0, 150)
+creditsFrame.Position = UDim2.new(0.5, -200, 0.5, -75)
+creditsFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+creditsFrame.ZIndex = 10
+
+local creditsCorner = Instance.new("UICorner", creditsFrame)
+creditsCorner.CornerRadius = UDim.new(0, 12)
+
+local titleContainer = Instance.new("Frame", creditsFrame)
+titleContainer.Size = UDim2.new(1, 0, 0, 50)
+titleContainer.Position = UDim2.new(0, 0, 0, 35)
+titleContainer.BackgroundTransparency = 1
+titleContainer.ZIndex = 10
+
+local titleText = "MADE BY CROCK HUB"
+local letterSpacing = 22
+local totalWidth = #titleText * letterSpacing
+local startX = (400 - totalWidth) / 2
+
+for i = 1, #titleText do
+    local letter = titleText:sub(i, i)
+    local letterLabel = Instance.new("TextLabel", titleContainer)
+    letterLabel.Size = UDim2.new(0, letterSpacing, 1, 0)
+    letterLabel.Position = UDim2.new(0, startX + (i - 1) * letterSpacing, 0, 0)
+    letterLabel.BackgroundTransparency = 1
+    letterLabel.Text = letter
+    letterLabel.Font = Enum.Font.SourceSansBold
+    letterLabel.TextSize = 26
+    letterLabel.TextColor3 = Color3.fromHSV((i - 1) / #titleText, 1, 1)
+    letterLabel.ZIndex = 10
+end
+
+local subtitle = Instance.new("TextLabel", creditsFrame)
+subtitle.Size = UDim2.new(1, 0, 0, 30)
+subtitle.Position = UDim2.new(0, 0, 0, 95)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "Join discord to report bugs"
+subtitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+subtitle.Font = Enum.Font.SourceSans
+subtitle.TextSize = 16
+subtitle.TextXAlignment = Enum.TextXAlignment.Center
+subtitle.ZIndex = 10
+
+local creditsCloseBtn = Instance.new("TextButton", creditsFrame)
+creditsCloseBtn.Size = UDim2.new(0, 30, 0, 30)
+creditsCloseBtn.Position = UDim2.new(1, -35, 0, 5)
+creditsCloseBtn.BackgroundTransparency = 1
+creditsCloseBtn.Text = "X"
+creditsCloseBtn.TextColor3 = Color3.fromRGB(255, 0, 0)
+creditsCloseBtn.Font = Enum.Font.SourceSansBold
+creditsCloseBtn.TextSize = 20
+creditsCloseBtn.ZIndex = 11
+
+creditsCloseBtn.MouseButton1Click:Connect(function()
+    creditsFrame:Destroy()
+end)
+
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 320, 0, 400)
+frame.Size = UDim2.new(0, 320, 0, 480)
 frame.Position = UDim2.new(0.05, 0, 0.3, 0)
 frame.BackgroundColor3 = Color3.new(0, 0, 0)
 frame.Active = true
@@ -272,10 +370,10 @@ local function addRainbowStroke(obj)
     table.insert(rainbowStrokes, s)
 end
 
--- Add rainbow stroke to frame background
+addRainbowStroke(creditsFrame)
+
 addRainbowStroke(frame)
 
--- Add rainbow stroke to mobile button
 addRainbowStroke(mobileBtn)
 
 local closeBtn = Instance.new("TextButton", frame)
@@ -334,33 +432,46 @@ makeBtn(frame, "Toggle Gifts", 90, function()
     _G.GiftsWanted = not _G.GiftsWanted
 end)
 
-makeBtn(frame, "ESP + Distance", 130, function()
+makeBtn(frame, "Toggle Falling Stars", 130, function()
+    _G.FallingStarsWanted = not _G.FallingStarsWanted
+end)
+
+makeBtn(frame, "ESP + Distance", 170, function()
     _G.ESPEnabled = not _G.ESPEnabled
 end)
 
-makeBtn(frame, "Christmas Rewards", 180, function()
+makeBtn(frame, "Christmas Rewards", 220, function()
     getHRP().CFrame = CFrame.new(3625.46021, -248.423355, 2188.08276)
 end)
 
-makeBtn(frame, "Frozen Chest", 220, function()
+makeBtn(frame, "Frozen Chest", 260, function()
     getHRP().CFrame = CFrame.new(3980.646, -248.423355, 2193.35718)
 end)
 
-makeBtn(frame, "Falling Stars", 260, function()
+makeBtn(frame, "Falling Stars", 300, function()
     for _, p in ipairs(findModelsByName("FallingStar")) do
         getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0)
         task.wait()
     end
 end)
 
-makeBtn(frame, "Santa Drop", 300, function()
+makeBtn(frame, "Santa Drop", 340, function()
     local p = findClosestByName("SantaDrop")
     if p then getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0) end
 end)
 
-makeBtn(frame, "Lucky Egg", 340, function()
+makeBtn(frame, "Lucky Egg", 380, function()
     local p = findClosestByName("2026")
     if p then getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0) end
+end)
+
+makeBtn(frame, "Meteorite", 420, function()
+    local p = findClosestMeteorite()
+    if p then 
+        getHRP().CFrame = p.CFrame + Vector3.new(0, 3, 0)
+    else
+        warn("No Meteorite found!")
+    end
 end)
 
 UserInputService.InputBegan:Connect(function(i, g)
