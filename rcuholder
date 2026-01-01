@@ -326,9 +326,10 @@ creditsCloseBtn.MouseButton1Click:Connect(function()
     creditsFrame:Destroy()
 end)
 
+-- Extended main frame to fit all buttons
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 320, 0, 480)
-frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+frame.Size = UDim2.new(0, 320, 0, 540)  -- Increased from 480 to 540
+frame.Position = UDim2.new(0.05, 0, 0.25, 0)  -- Adjusted position slightly
 frame.BackgroundColor3 = Color3.new(0, 0, 0)
 frame.Active = true
 frame.Draggable = true
@@ -371,9 +372,7 @@ local function addRainbowStroke(obj)
 end
 
 addRainbowStroke(creditsFrame)
-
 addRainbowStroke(frame)
-
 addRainbowStroke(mobileBtn)
 
 local closeBtn = Instance.new("TextButton", frame)
@@ -473,6 +472,68 @@ makeBtn(frame, "Meteorite", 420, function()
         warn("No Meteorite found!")
     end
 end)
+
+makeBtn(frame, "Server Hop", 460, function()
+    local TeleportService = game:GetService("TeleportService")
+    local HttpService = game:GetService("HttpService")
+
+    local Servers = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+    local bestServer = nil
+    local cursor = nil
+
+    local function ListServers(cursorParam)
+        local Raw = game:HttpGet(Servers .. ((cursorParam and "&cursor=" .. cursorParam) or ""))
+        return HttpService:JSONDecode(Raw)
+    end
+
+    local attempts = 0
+    local maxAttempts = 5
+    
+    repeat
+        local ServersList = ListServers(cursor)
+        
+        for _, server in ipairs(ServersList.data) do
+            local spotsRemaining = server.maxPlayers - server.playing
+            
+            if server.id ~= game.JobId then
+                -- Prioritize servers with exactly 1 spot remaining
+                if spotsRemaining == 1 then
+                    bestServer = server
+                    break
+                end
+                
+                if not bestServer and spotsRemaining >= 2 and spotsRemaining <= 3 then
+                    bestServer = server
+                end
+            end
+        end
+        
+        cursor = ServersList.nextPageCursor
+        attempts = attempts + 1
+        
+    until bestServer or not cursor or attempts >= maxAttempts
+
+    if not bestServer then
+        local ServersList = ListServers(nil)
+        for _, server in ipairs(ServersList.data) do
+            if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                bestServer = server
+                break
+            end
+        end
+    end
+
+    if bestServer then
+        local spotsLeft = bestServer.maxPlayers - bestServer.playing
+        print("Joining server with " .. spotsLeft .. " spot(s) remaining")
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, bestServer.id, game.Players.LocalPlayer)
+    else
+        warn("No server found to join. [CROCK HUB]")
+    end
+end)
+
+-- Add spacing for the last button to fit properly
+makeBtn(frame, "", 500, function() end).Visible = false
 
 UserInputService.InputBegan:Connect(function(i, g)
     if not g and i.KeyCode == Enum.KeyCode.B and not guiClosed then
